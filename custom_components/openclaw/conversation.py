@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any, Literal
 
 from homeassistant.components import conversation
@@ -22,6 +23,47 @@ from .client import (
 )
 
 MAX_ENTITY_CONTEXT_ENTRIES = 5
+MATCH_STOPWORDS = {
+    "a",
+    "an",
+    "any",
+    "current",
+    "for",
+    "get",
+    "give",
+    "how",
+    "i",
+    "is",
+    "me",
+    "of",
+    "show",
+    "state",
+    "status",
+    "temp",
+    "temperature",
+    "tell",
+    "the",
+    "to",
+    "value",
+    "what",
+    "whats",
+    "which",
+}
+GENERIC_WEATHER_PATTERNS = (
+    re.compile(r"\bweather\b"),
+    re.compile(r"\bforecast\b"),
+    re.compile(r"\btemperature\b"),
+    re.compile(r"\btemp\b"),
+    re.compile(r"\bhumid(?:ity)?\b"),
+    re.compile(r"\bwind(?:y)?\b"),
+    re.compile(r"\brain(?:ing)?\b"),
+    re.compile(r"\bsnow(?:ing)?\b"),
+    re.compile(r"\boutside\b"),
+)
+EXPLICIT_LOCATION_PATTERN = re.compile(
+    r"\b(?:in|for|at|near|around|outside of)\s+"
+    r"(?:[A-Z][a-z]+(?:[\s-][A-Z][a-z]+)*|\d{5}(?:-\d{4})?)\b"
+)
 
 
 @dataclass(slots=True)
@@ -65,7 +107,7 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
     ) -> conversation.ConversationResult:
         """Send the user utterance to OpenClaw and return an Assist result."""
         request = OpenClawConversationRequest(
-            text=user_input.text,
+            text=self._inject_home_location_for_generic_weather(user_input.text),
             entity_context=self._async_collect_entity_context(user_input),
         )
         response = intent.IntentResponse(language=user_input.language)
@@ -151,34 +193,120 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
     def _async_collect_entity_context(
         self, user_input: conversation.ConversationInput
     ) -> list[dict[str, Any]] | None:
-        """Collect a compact set of matching entity states from the utterance."""
+        """Collect the best matching entity states from the utterance."""
         if not self._client.context.entity_context_enabled:
             return None
 
         utterance = user_input.text.lower()
-        matches: list[dict[str, Any]] = []
+        utterance_tokens = self._tokenize_for_matching(utterance)
+        ranked: list[tuple[int, dict[str, Any]]] = []
+
         for state in self.hass.states.async_all():
-            if len(matches) >= MAX_ENTITY_CONTEXT_ENTRIES:
-                break
-
-            entity_id = state.entity_id.lower()
-            friendly_name = str(
-                state.attributes.get("friendly_name", state.entity_id)
-            ).lower()
-
-            if entity_id not in utterance and friendly_name not in utterance:
+            score = self._score_entity_match(state, utterance, utterance_tokens)
+            if score <= 0:
                 continue
 
-            matches.append(
-                {
-                    "entity_id": state.entity_id,
-                    "name": state.attributes.get("friendly_name"),
-                    "state": state.state,
-                    "attributes": self._compact_attributes(state.attributes),
-                }
+            ranked.append(
+                (
+                    score,
+                    {
+                        "entity_id": state.entity_id,
+                        "name": state.attributes.get("friendly_name"),
+                        "state": state.state,
+                        "attributes": self._compact_attributes(state.attributes),
+                    },
+                )
             )
 
-        return matches or None
+        if not ranked:
+            return None
+
+        ranked.sort(
+            key=lambda item: (
+                -item[0],
+                str(item[1].get("name") or item[1]["entity_id"]).lower(),
+            )
+        )
+        return [item[1] for item in ranked[:MAX_ENTITY_CONTEXT_ENTRIES]]
+
+    def _inject_home_location_for_generic_weather(self, utterance: str) -> str:
+        """Default generic weather questions to the configured home location."""
+        if not self._is_generic_weather_request(utterance):
+            return utterance
+
+        home_location = self._home_location_label()
+        if home_location is None:
+            return utterance
+
+        return (
+            f"{utterance.rstrip()} "
+            f"(Use the configured Home Assistant home location: {home_location}.)"
+        )
+
+    def _score_entity_match(
+        self,
+        state,
+        utterance: str,
+        utterance_tokens: set[str],
+    ) -> int:
+        """Return a score for how well a state matches the utterance."""
+        entity_id = state.entity_id.lower()
+        friendly_name = str(
+            state.attributes.get("friendly_name", state.entity_id)
+        ).lower()
+        entity_tokens = self._tokenize_for_matching(entity_id)
+        name_tokens = self._tokenize_for_matching(friendly_name)
+        candidate_tokens = entity_tokens | name_tokens
+
+        if friendly_name and friendly_name in utterance:
+            return 300 + len(name_tokens)
+        if entity_id in utterance:
+            return 280 + len(entity_tokens)
+
+        if candidate_tokens and candidate_tokens.issubset(utterance_tokens):
+            return 220 + len(candidate_tokens)
+
+        overlap = candidate_tokens & utterance_tokens
+        if len(overlap) >= 2:
+            return 150 + len(overlap)
+        if len(overlap) == 1 and any(len(token) >= 4 for token in overlap):
+            return 100
+        return 0
+
+    def _tokenize_for_matching(self, text: str) -> set[str]:
+        """Tokenize strings for lightweight entity matching."""
+        tokens = {
+            token
+            for token in re.findall(r"[a-z0-9]+", text.lower())
+            if len(token) >= 2 and token not in MATCH_STOPWORDS
+        }
+        return tokens
+
+    def _is_generic_weather_request(self, utterance: str) -> bool:
+        """Return True when the user asked about weather without a location."""
+        normalized = utterance.strip()
+        if not normalized:
+            return False
+
+        lowered = normalized.lower()
+        if not any(pattern.search(lowered) for pattern in GENERIC_WEATHER_PATTERNS):
+            return False
+
+        if EXPLICIT_LOCATION_PATTERN.search(normalized):
+            return False
+
+        return True
+
+    def _home_location_label(self) -> str | None:
+        """Return the configured Home Assistant home location label."""
+        location_name = self.hass.config.location_name.strip()
+        if not location_name:
+            return None
+
+        country = self.hass.config.country
+        if country:
+            return f"{location_name}, {country}"
+        return location_name
 
     async def _async_execute_action(
         self,

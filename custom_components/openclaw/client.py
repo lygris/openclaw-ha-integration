@@ -247,7 +247,8 @@ class OpenClawClient:
     def _format_entity_context(self, entity_context: list[dict[str, Any]]) -> str:
         """Render a compact entity context message."""
         lines = [
-            "Home Assistant entity context. Keep answers grounded in these current states.",
+            "Home Assistant entity context. Keep answers grounded in these current live states.",
+            "If one entity is the clear match for the user's request, answer directly from it instead of asking an unnecessary clarification question.",
         ]
         for item in entity_context:
             entity_id = item.get("entity_id", "unknown")
