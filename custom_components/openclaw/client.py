@@ -56,6 +56,11 @@ class OpenClawRequestContext:
     entity_context_enabled: bool
 
 
+def build_agent_session_key(agent_id: str, stable_session_id: str) -> str:
+    """Build an explicit OpenClaw agent-scoped session key."""
+    return f"agent:{agent_id}:{stable_session_id}"
+
+
 class OpenClawClient:
     """Thin HTTP client for future OpenClaw conversation requests."""
 
@@ -91,12 +96,17 @@ class OpenClawClient:
         session_id: str | None = None,
     ) -> dict[str, str]:
         """Return request headers."""
+        resolved_agent_id = agent_id or self.context.agent_id
+        resolved_session_id = session_id or self.context.stable_session_id
         return {
             "Authorization": f"Bearer {self.auth_token}",
             "Content-Type": "application/json",
             "User-Agent": USER_AGENT,
-            "x-openclaw-agent-id": agent_id or self.context.agent_id,
-            "x-openclaw-session-key": session_id or self.context.stable_session_id,
+            "x-openclaw-agent-id": resolved_agent_id,
+            "x-openclaw-session-key": build_agent_session_key(
+                resolved_agent_id,
+                resolved_session_id,
+            ),
         }
 
     async def async_probe(self) -> None:
@@ -148,7 +158,7 @@ class OpenClawClient:
         messages.append({"role": "user", "content": prompt})
 
         payload: dict[str, Any] = {
-            "model": f"openclaw:{agent_id or self.context.agent_id}",
+            "model": f"openclaw/{agent_id or self.context.agent_id}",
             "messages": messages,
             "stream": False,
             "user": session_id or self.context.stable_session_id,
