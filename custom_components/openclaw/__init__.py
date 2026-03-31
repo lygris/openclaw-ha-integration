@@ -5,12 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_BASE_URL, CONF_TOKEN
+from homeassistant.const import CONF_TOKEN
 from homeassistant.core import HomeAssistant
 from homeassistant.const import Platform
 
 from .client import OpenClawClient
 from .const import (
+    CONF_BASE_URL,
     CONF_AGENT_ID,
     CONF_ENTITY_CONTEXT_ENABLED,
     CONF_STABLE_SESSION_ID,

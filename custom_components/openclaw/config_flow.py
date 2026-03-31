@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.const import CONF_BASE_URL, CONF_TOKEN
+from homeassistant.const import CONF_TOKEN
 from homeassistant.data_entry_flow import FlowResult
 
 from .client import (
@@ -18,6 +18,7 @@ from .client import (
 )
 from .const import (
     CONF_AGENT_ID,
+    CONF_BASE_URL,
     CONF_ENTITY_CONTEXT_ENABLED,
     CONF_STABLE_SESSION_ID,
     DEFAULT_AGENT_ID,
