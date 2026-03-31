@@ -1,0 +1,26 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect OpenClaw",
+        "description": "Configure Home Assistant to reach your OpenClaw instance.",
+        "data": {
+          "base_url": "OpenClaw base URL",
+          "token": "Auth token",
+          "agent_id": "Target agent id",
+          "stable_session_id": "Stable session id",
+          "entity_context_enabled": "Include entity context in future requests"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to reach the configured OpenClaw base URL.",
+      "invalid_auth": "OpenClaw rejected the configured token.",
+      "chat_endpoint_failed": "OpenClaw chat completions did not accept the validation request.",
+      "invalid_base_url": "Enter a valid http or https URL."
+    },
+    "abort": {
+      "already_configured": "This OpenClaw base URL, agent id, and stable session id are already configured."
+    }
+  }
+}

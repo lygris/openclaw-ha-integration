@@ -1,0 +1,11 @@
+{
+  "domain": "openclaw",
+  "name": "OpenClaw",
+  "documentation": "https://github.com/openclaw/openclaw",
+  "requirements": [],
+  "codeowners": ["@lygris"],
+  "config_flow": true,
+  "version": "0.1.0",
+  "integration_type": "service",
+  "iot_class": "cloud_polling"
+}
