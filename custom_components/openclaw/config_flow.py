@@ -7,8 +7,8 @@ from urllib.parse import urlparse
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.config_entries import ConfigFlowResult as FlowResult  # type: ignore[attr-defined]
 from homeassistant.const import CONF_BASE_URL, CONF_TOKEN
+from homeassistant.data_entry_flow import FlowResult
 
 from .client import (
     OpenClawAuthError,
